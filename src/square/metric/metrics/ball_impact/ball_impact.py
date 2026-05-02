@@ -65,7 +65,6 @@ class BallImpact(Metric):
         if np.any(second_innings_mask):
             second_before_features = np.column_stack(
                 (
-                    target[second_innings_mask],
                     runs_required_before[second_innings_mask],
                     wickets_before[second_innings_mask],
                     balls_before[second_innings_mask],
@@ -75,7 +74,6 @@ class BallImpact(Metric):
             )
             second_after_features = np.column_stack(
                 (
-                    target[second_innings_mask],
                     runs_required_after[second_innings_mask],
                     wickets_after[second_innings_mask],
                     balls_after[second_innings_mask],
