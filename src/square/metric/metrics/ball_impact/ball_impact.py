@@ -75,8 +75,21 @@ class BallImpact(Metric):
 
         if np.any(second_innings_mask):
             m = second_innings_mask
-            rrpb_before = runs_required_before[m] / np.maximum(balls_before[m], 1)
-            rrpb_after = runs_required_after[m] / np.maximum(balls_after[m], 1)
+            max_innings_balls = input_vars.get("max_innings_balls")
+            if max_innings_balls is None:
+                raise ValueError(
+                    "input_vars must include 'max_innings_balls' for second innings "
+                    "(legal balls in innings vs format limit)."
+                )
+            mib = np.asarray(max_innings_balls, dtype=np.float64)
+            if mib.ndim == 0:
+                mib = np.broadcast_to(mib, runs_before.shape)
+            balls_remaining_before = mib - balls_before.astype(np.float64)
+            balls_remaining_after = mib - balls_after.astype(np.float64)
+            br_b = np.maximum(balls_remaining_before[m], 1.0)
+            br_a = np.maximum(balls_remaining_after[m], 1.0)
+            rrpb_before = runs_required_before[m].astype(np.float64) / br_b
+            rrpb_after = runs_required_after[m].astype(np.float64) / br_a
             if self.include_target:
                 second_before_features = np.column_stack(
                     (
