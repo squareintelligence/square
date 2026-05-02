@@ -1,10 +1,19 @@
-from square.metric.metric import Metric
+from typing import Dict, Protocol
+
 import numpy as np
-from typing import Dict
+
+from square.metric.metric import Metric
+from square.utils import load_joblib_model_from_s3
+
+
+class ProbabilisticModel(Protocol):
+    def predict_proba(self, x: np.ndarray) -> np.ndarray:
+        ...
 
 class BallImpact(Metric):
-    def __init__(self, model: str):
-        self.model_name = model
+    def __init__(self, first_innings_model: str, second_innings_model: str):
+        self.first_innings_model = load_joblib_model_from_s3(first_innings_model)
+        self.second_innings_model = load_joblib_model_from_s3(second_innings_model)
 
     def compute(self, input_vars: Dict[str, np.ndarray]) -> np.ndarray:
         ball_runs = input_vars["ball_runs"]
@@ -16,14 +25,72 @@ class BallImpact(Metric):
         wickets_before = input_vars["wickets"]
         wickets_after = wickets_before + is_wicket
 
-        balls = input_vars["balls"]
-        balls_after = balls + 1
+        balls_before = input_vars["balls"]
+        balls_after = balls_before + 1
 
         target = input_vars["target"]
         runs_required_before = target - runs_before
-        runs_required_per_ball_before = runs_required_before / balls
-
         runs_required_after = target - runs_after
-        runs_required_per_ball_after = runs_required_after / balls_after
 
-        return 0
+        second_innings_mask = target > 0
+        first_innings_mask = ~second_innings_mask
+
+        win_prob_before = np.zeros_like(runs_before, dtype=float)
+        win_prob_after = np.zeros_like(runs_before, dtype=float)
+
+        if np.any(first_innings_mask):
+            first_before_features = np.column_stack(
+                (
+                    runs_before[first_innings_mask],
+                    wickets_before[first_innings_mask],
+                    balls_before[first_innings_mask],
+                    runs_before[first_innings_mask] / np.maximum(balls_before[first_innings_mask], 1),
+                )
+            )
+            first_after_features = np.column_stack(
+                (
+                    runs_after[first_innings_mask],
+                    wickets_after[first_innings_mask],
+                    balls_after[first_innings_mask],
+                    runs_after[first_innings_mask] / np.maximum(balls_after[first_innings_mask], 1),
+                )
+            )
+            win_prob_before[first_innings_mask] = self._predict_win_prob(
+                self.first_innings_model, first_before_features
+            )
+            win_prob_after[first_innings_mask] = self._predict_win_prob(
+                self.first_innings_model, first_after_features
+            )
+
+        if np.any(second_innings_mask):
+            second_before_features = np.column_stack(
+                (
+                    target[second_innings_mask],
+                    runs_required_before[second_innings_mask],
+                    wickets_before[second_innings_mask],
+                    balls_before[second_innings_mask],
+                    runs_required_before[second_innings_mask]
+                    / np.maximum(balls_before[second_innings_mask], 1),
+                )
+            )
+            second_after_features = np.column_stack(
+                (
+                    target[second_innings_mask],
+                    runs_required_after[second_innings_mask],
+                    wickets_after[second_innings_mask],
+                    balls_after[second_innings_mask],
+                    runs_required_after[second_innings_mask]
+                    / np.maximum(balls_after[second_innings_mask], 1),
+                )
+            )
+            win_prob_before[second_innings_mask] = self._predict_win_prob(
+                self.second_innings_model, second_before_features
+            )
+            win_prob_after[second_innings_mask] = self._predict_win_prob(
+                self.second_innings_model, second_after_features
+            )
+
+        return win_prob_after - win_prob_before
+
+    def _predict_win_prob(self, model: ProbabilisticModel, features: np.ndarray) -> np.ndarray:
+        return model.predict_proba(features)[:, 1]
