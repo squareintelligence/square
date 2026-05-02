@@ -26,7 +26,12 @@ class BallImpact(Metric):
         wickets_after = wickets_before + is_wicket
 
         balls_before = input_vars["balls"]
-        balls_after = balls_before + 1
+        is_legal = input_vars.get("is_legal")
+        if is_legal is None:
+            legal_inc = np.ones_like(balls_before, dtype=np.int64)
+        else:
+            legal_inc = np.asarray(is_legal != 0, dtype=np.int64)
+        balls_after = balls_before + legal_inc
 
         target = input_vars["target"]
         runs_required_before = target - runs_before
@@ -65,6 +70,7 @@ class BallImpact(Metric):
         if np.any(second_innings_mask):
             second_before_features = np.column_stack(
                 (
+                    target[second_innings_mask],
                     runs_required_before[second_innings_mask],
                     wickets_before[second_innings_mask],
                     balls_before[second_innings_mask],
@@ -74,6 +80,7 @@ class BallImpact(Metric):
             )
             second_after_features = np.column_stack(
                 (
+                    target[second_innings_mask],
                     runs_required_after[second_innings_mask],
                     wickets_after[second_innings_mask],
                     balls_after[second_innings_mask],
