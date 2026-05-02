@@ -11,7 +11,13 @@ class ProbabilisticModel(Protocol):
         ...
 
 class BallImpact(Metric):
-    def __init__(self, first_innings_model: str, second_innings_model: str):
+    def __init__(
+        self,
+        first_innings_model: str,
+        second_innings_model: str,
+        include_target: bool = True,
+    ):
+        self.include_target = include_target
         self.first_innings_model = load_joblib_model_from_s3(first_innings_model)
         self.second_innings_model = load_joblib_model_from_s3(second_innings_model)
 
@@ -68,26 +74,45 @@ class BallImpact(Metric):
             )
 
         if np.any(second_innings_mask):
-            second_before_features = np.column_stack(
-                (
-                    target[second_innings_mask],
-                    runs_required_before[second_innings_mask],
-                    wickets_before[second_innings_mask],
-                    balls_before[second_innings_mask],
-                    runs_required_before[second_innings_mask]
-                    / np.maximum(balls_before[second_innings_mask], 1),
+            m = second_innings_mask
+            rrpb_before = runs_required_before[m] / np.maximum(balls_before[m], 1)
+            rrpb_after = runs_required_after[m] / np.maximum(balls_after[m], 1)
+            if self.include_target:
+                second_before_features = np.column_stack(
+                    (
+                        target[m],
+                        runs_required_before[m],
+                        wickets_before[m],
+                        balls_before[m],
+                        rrpb_before,
+                    )
                 )
-            )
-            second_after_features = np.column_stack(
-                (
-                    target[second_innings_mask],
-                    runs_required_after[second_innings_mask],
-                    wickets_after[second_innings_mask],
-                    balls_after[second_innings_mask],
-                    runs_required_after[second_innings_mask]
-                    / np.maximum(balls_after[second_innings_mask], 1),
+                second_after_features = np.column_stack(
+                    (
+                        target[m],
+                        runs_required_after[m],
+                        wickets_after[m],
+                        balls_after[m],
+                        rrpb_after,
+                    )
                 )
-            )
+            else:
+                second_before_features = np.column_stack(
+                    (
+                        runs_required_before[m],
+                        wickets_before[m],
+                        balls_before[m],
+                        rrpb_before,
+                    )
+                )
+                second_after_features = np.column_stack(
+                    (
+                        runs_required_after[m],
+                        wickets_after[m],
+                        balls_after[m],
+                        rrpb_after,
+                    )
+                )
             win_prob_before[second_innings_mask] = self._predict_win_prob(
                 self.second_innings_model, second_before_features
             )
