@@ -10,11 +10,9 @@ from botocore.client import BaseClient
 
 
 def load_joblib_model_from_s3(model_path: str, s3_client: BaseClient | None = None) -> Any:
-    bucket = os.getenv("MODEL_BUCKET")
-    if not bucket:
-        raise ValueError("Missing required config: MODEL_BUCKET")
+    bucket = "square-intelligence-metric-models"
+    prefix = "models"
 
-    prefix = os.getenv("MODEL_PREFIX", "").strip("/")
     key = f"{prefix}/{model_path.lstrip('/')}" if prefix else model_path.lstrip("/")
     if not key:
         raise ValueError("Model path cannot be empty")
